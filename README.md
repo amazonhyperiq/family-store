@@ -1,66 +1,38 @@
-# Amazon HR & Finance — Family Store Foundation V1
+# Database setup — Nhost
 
-نظام تأسيسي جديد لإدارة الموارد البشرية والمالية، مبني على React + TypeScript + Vite وNhost.
+## Important
+This is a **new-system schema**. It does not connect to, overwrite, or migrate the old Supabase project.
+Do not run it in the old production database. First confirm that you are inside the new Nhost project.
 
-## ما الذي يتضمنه هذا الإصدار؟
-- واجهة عربية/إنجليزية متجاوبة.
-- هيكل وحدات: الموظفون، التكليفات، السلف، الرواتب، الاستقطاعات، الحضور، الإضافي، الإجازات، الإشعارات، التقارير، المستخدمون والصلاحيات.
-- عميل Nhost أولي لتسجيل الدخول وتهيئة GraphQL.
-- مخطط PostgreSQL أولي للموظفين والتكليفات والسلف والرواتب والإضافي والحضور والإجازات والإشعارات وسجل التدقيق.
-- مواصفات أمن وصلاحيات وإشعارات وخطة ترحيل.
-- GitHub Actions لبناء ونشر نسخة GitHub Pages من فرع `foundation-v1`.
+## Apply the schema
+1. Open the new Nhost project.
+2. Open **Database → SQL Editor**.
+3. Open `migrations/001_initial_schema.sql`.
+4. Review it, then run it once.
+5. Track the created `public` tables in Hasura/Nhost GraphQL.
+6. Configure permissions before enabling the frontend.
 
-**تنبيه:** هذا إصدار تأسيسي وليس نظاماً إنتاجياً مكتملاً بعد. لا تُدخل بيانات حقيقية ولا تفعّل العمليات المالية قبل إعداد مشروع Nhost والصلاحيات والوظائف الخادمية واختبارها.
+## Required permission design
+- `owner/admin`: full business access, subject to audit.
+- `hr`: employee, assignments, attendance, leave workflows.
+- `finance`: advances, payroll, deductions and financial reports.
+- `manager`: only assigned department/team records and approvals.
+- `advance_giver`: create advances only through a server-validated operation; may view only permitted own activity.
+- `employee`: own profile, own payslips, own requests and own notifications.
+- `auditor`: read-only approved scope.
+- `public/anonymous`: no access to HR/finance tables.
 
-## 1) تجهيز Nhost
-1. افتح مشروع Nhost الجديد.
-2. استخرج قيمة Subdomain والمنطقة Region من إعدادات المشروع.
-3. أنشئ ملف `.env` في جذر المشروع بالاستناد إلى `.env.example`.
-4. أدخل القيم الفعلية فقط:
-   - `VITE_NHOST_SUBDOMAIN`
-   - `VITE_NHOST_REGION`
-5. لا تضع أي Admin Secret أو DB password أو VAPID private key في `.env` الخاص بالواجهة.
+Do not use a client-side role flag as authorization. Enforce access with Hasura row/column permissions and server-side functions/actions.
 
-## 2) إعداد قاعدة البيانات
-راجع `database/README.md` ثم نفّذ `database/migrations/001_initial_schema.sql` داخل قاعدة بيانات مشروع Nhost الجديد فقط.
-بعد ذلك تتبع الجداول في Hasura واضبط الصلاحيات حسب `docs/ARCHITECTURE.md`.
+## Critical business rules
+- Every employee may have multiple `employee_assignments`; payroll is calculated per assignment.
+- Each payroll item has an explicit currency. Do not combine USD and IQD totals without a displayed conversion rate and date.
+- Overtime is IQD only and uses the hourly rate approved by management. No multiplier is assumed.
+- An advance must have an authenticated `created_by` and a `giver_id` resolved from the authenticated account mapping. Never accept the giver identity only from a browser-supplied UUID.
+- Password changes use Nhost Auth. Do not store password hashes in business tables.
+- Passkey/WebAuthn stores credential public keys and counters, not fingerprint/face data.
+- Notification event data and recipient delivery/read status are separate so that multiple recipients and channels can be audited.
+- Push subscription keys are private per-device data. Push dispatch and VAPID private keys belong only on the server.
 
-## 3) تشغيل محلياً
-يتطلب Node.js 20 أو أحدث.
-
-```bash
-npm install
-npm run dev
-```
-
-افتح الرابط الذي يعرضه Vite، غالباً `http://localhost:5173`.
-
-لفحص البناء:
-```bash
-npm run typecheck
-npm run build
-```
-
-## 4) الرفع إلى GitHub
-ارفع محتويات هذا المجلد إلى جذر مستودع `amazonhyperiq/family-store` وأنت على الفرع `foundation-v1`.
-لا ترفع ملف `.env`؛ ارفع `.env.example` فقط.
-بعد الرفع، فعّل GitHub Actions / Pages من إعدادات المستودع إذا لم يكن النشر مفعلاً.
-
-## 5) إعداد GitHub Actions
-أضف القيمتين التاليتين في Repository Settings → Secrets and variables → Actions → Variables:
-- `VITE_NHOST_SUBDOMAIN`
-- `VITE_NHOST_REGION`
-
-هذه قيم تعريف مشروع وليست أسراراً. لا تضف مفاتيح إدارة أو أسرار خادمية إلى متغيرات Vite.
-
-## 6) حالة التنفيذ
-الواجهة التأسيسية وقاعدة البيانات الأولية موجودتان. ما يزال مطلوباً:
-- ضبط Hasura permissions بدقة واختبارها لكل دور.
-- بناء وظائف خادمية للعمليات الحساسة، خصوصاً إنشاء السلفة والتحقق من هوية المانح.
-- استكمال إدارة المستخدمين وتغيير كلمات المرور واسترداد الحساب.
-- تفعيل Passkeys/WebAuthn بعد التأكد من إعدادات Nhost Auth.
-- تنفيذ الإشعارات الفعلية وقنوات Push وإدارة الاشتراكات.
-- بناء شاشات CRUD والتقارير والاعتمادات المالية.
-- ترحيل بيانات النظام القديم بعد تجربة ومطابقة الأرصدة والأعداد.
-
-راجع `docs/` و`database/` قبل التفعيل.
+## Before importing legacy data
+Prepare a read-only export from the old system, map IDs and currencies, compare row counts and financial totals, then run a trial import into staging. Never import directly into the active production tables without a reconciliation report.
